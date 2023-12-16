@@ -1,0 +1,20 @@
+Symbols: M,N,O,A,B,C
+Initial conditions: Monkey(M), Box(O), Banana(N), Loc(A), Loc(B), Loc(C), At(M, A), At(N, B), At(O, C), Low(M), Low(O), High(N)
+Goal conditions: Have(M,N)
+
+Actions:
+        Go(x,y)
+        Preconditions: At(M,x), Low(M), Loc(x), Loc(y)
+        Effects: At(M,y), !At(M,x)
+        
+        Push(b,x,y)
+        Preconditions: At(M,x), Low(M), At(b,x), Low(b), Box(b), Loc(x), Loc(y)
+        Effects: At(b,y), At(M, y), !At(b,x), !At(M,x)
+        
+        ClimbUp(x)
+        Preconditions: At(M,x), At(O,x), Low(M), Low(O)
+        Effects: On(M,O), !Low(M), High(M)
+        
+        Grasp(x)
+        Preconditions: At(M,x), At(N,x), High(M), High(N)
+        Effects: Have(M,N)
