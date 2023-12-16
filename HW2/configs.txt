@@ -1,0 +1,304 @@
+struct Node_rrt_c
+{
+	vector<double> angles_rrt_c;
+	Node_rrt_c* parent_rrt_c; //a pointer to the parent node
+};
+
+enum ExtendResult {
+    Trapped,
+    Reached,
+    Advanced
+};
+
+void printTree_rrt_c(vector<Node_rrt_c*> &tree)
+{
+	// Printing the elements in the tree vector
+    for (const auto* node : tree) {
+        // Print the configuration of the current node
+        for (const auto& angle : node->angles_rrt_c) {
+            std::cout << angle << " ";
+        }
+        std::cout << std::endl;
+    }
+}
+
+void printTreeNodes_rrt_c(Node_rrt_c* node)
+{
+	for (const auto& angle : node->angles_rrt_c)
+	{
+		cout << angle << " ";
+	}
+	cout << endl;
+}
+
+double distance(const std::vector<double>& a, const std::vector<double>& b) {
+    double sum = 0.0;
+    for (size_t i = 0; i < a.size(); i++) {
+        sum += (a[i] - b[i]) * (a[i] - b[i]);
+    }
+    return std::sqrt(sum);
+}
+
+//generate random nodes for RRT_Connect
+vector<double> generatenodes_rrt_c(int numofDOFs)
+{
+	std::random_device rd;
+	std::mt19937 gen(rd());
+	std::uniform_real_distribution<double> distribution(0.0, 2*M_PI);
+
+	vector<double> rand_angles;
+	rand_angles.reserve(numofDOFs);
+    for (int i = 0; i < numofDOFs; ++i) {
+        rand_angles.push_back(distribution(gen));
+    }
+	return rand_angles;
+}
+
+Node_rrt_c* nearest_node_2(vector<Node_rrt_c*> &tree, vector<double> &q)
+{
+	//point the nearestnode to null
+	Node_rrt_c* q_near = nullptr;
+	double minDistance = std::numeric_limits<double>::max();
+
+	//iterate through the tree nodes and find the nearest node to q and save it in q_near
+	for (Node_rrt_c* node : tree)
+	{
+		double distance = 0.0;
+		for (size_t i = 0; i < node->angles_rrt_c.size(); ++i)
+		{
+			distance += std::pow(node->angles_rrt_c[i] - q[i], 2);
+		}
+		distance = sqrt(distance);
+
+		if (distance < minDistance)
+		{
+			minDistance = distance;
+			q_near = node;
+		}
+	}
+	
+	return q_near;
+}
+
+bool connect_rrt_c(Node_rrt_c* q_near_a, vector<double> &q_new_angles, vector<double> &valid_angles, int numofDOFs, double *map, int x_size, int y_size)
+{		
+    //straight interpolation between two nodes checking for the validity of samples
+
+	double distance = 0;
+    int i,j;
+    for (j = 0; j < numofDOFs; j++){
+        if(distance < fabs(q_near_a->angles_rrt_c[j] - q_new_angles[j]))
+            distance = fabs(q_near_a->angles_rrt_c[j] - q_new_angles[j]);
+    }
+
+    int numofsamples = (int)(distance/(PI/20));
+
+    int firstinvalidconf = 1;
+
+    for (int i = 0; i < numofsamples; i++){
+
+		std::vector<double> sample_config;
+
+        for(int j = 0; j < numofDOFs; j++){
+            sample_config.push_back(q_near_a->angles_rrt_c[j] + ((double)(i)/(numofsamples-1))*(q_new_angles[j] - q_near_a->angles_rrt_c[j]));
+        }
+
+		// Print the sample
+        std::cout << "Samples are: ";
+        for (const auto& angle : sample_config) {
+            std::cout << angle << " ";
+        }
+        std::cout << std::endl;
+
+        if(!IsValidArmConfiguration(sample_config.data(), numofDOFs, map, x_size, y_size) && firstinvalidconf) {
+            firstinvalidconf = 1;
+     
+			return false;
+        }
+		cout << "working" << endl;
+		valid_angles.clear();
+        for (const auto& angle : sample_config) {
+            valid_angles.push_back(angle);
+        }
+    } 
+}
+
+bool new_config_rrt_c(vector<double> &q, Node_rrt_c* q_near_a, vector<double> &valid_angles, double epsilon, int numofDOFs, double *map, int x_size, int y_size)
+{
+	vector<double> q_new_angles;
+	
+	//calculate arm configuration at the epsilon distance
+	for (size_t i = 0; i < numofDOFs; ++i)
+	{
+		double dist_to_q = q[i] - q_near_a->angles_rrt_c[i];
+
+		dist_to_q = (dist_to_q > 0) ? std::min(epsilon, dist_to_q) : std::max(-epsilon, dist_to_q);
+
+		//calculate a q_new based on the epsilon distance 
+		q_new_angles.push_back(q_near_a->angles_rrt_c[i] + dist_to_q);
+	}
+
+	cout << "Newly generated angles are: " << endl;
+	for (size_t i = 0; i < q_new_angles.size(); ++i) {
+    	std::cout << q_new_angles[i] << " ";
+	}
+	std::cout << std::endl; 
+	cout << '\n';
+
+	//Interpolate from q_near to q_new_angles
+	if (connect_rrt_c(q_near_a, q_new_angles, valid_angles, numofDOFs, map, x_size, y_size))
+	{
+		cout << "Valid angles are: " << endl;
+
+		for (size_t i = 0; i < valid_angles.size(); ++i) {
+			std::cout << valid_angles[i] << " ";
+		}
+		std::cout << std::endl; 
+		cout << '\n';
+
+		return true;
+	}
+	else
+	{
+		cout << "Trapped" << endl;
+		return false;
+	}
+}
+
+ExtendResult extend_rrt_c(vector<Node_rrt_c*> &tree, vector<double> &q, double epsilon, int numofDOFs, double* map, int x_size, int y_size)
+{
+	vector<double> valid_angles;
+	//find nearest vertex in the tree to q - q_near
+	Node_rrt_c* q_near_a = nearest_node_2(tree, q);
+	cout << "q_near is: " << endl;
+	printTreeNodes_rrt_c(q_near_a);
+
+	if (new_config_rrt_c(q, q_near_a, valid_angles, epsilon, numofDOFs, map, x_size, y_size))
+	{
+		Node_rrt_c* newNode = new Node_rrt_c{valid_angles, q_near_a};
+		tree.push_back(newNode);
+
+		cout << "Adding q_new node to the tree: " << endl;
+		printTreeNodes_rrt_c(newNode);
+		cout <<  "With parents: " << endl;
+		printTreeNodes_rrt_c(q_near_a);
+		cout << '\n';
+
+		if (distance(valid_angles, q) < epsilon)
+		{
+			return Reached;
+		}
+		else{
+			return Advanced;
+		}
+	}
+	return Trapped;
+}
+
+ExtendResult connect(vector<Node_rrt_c*> &tree, vector<double> &q, double epsilon_rrtc, int numofDOFs, double* map, int x_size, int y_size)
+{
+	ExtendResult s;
+	do
+	{
+		s = extend_rrt_c(tree, q, epsilon_rrtc, numofDOFs, map, x_size, y_size);
+		cout << "s inside is: " << s << endl;
+	} while (s == Advanced);
+	cout << "s is: " << s << endl;
+	return s;
+}
+
+vector<Node_rrt_c*> rrt_connect_planner(double *armstart_anglesV_rad, double *armgoal_anglesV_rad, int numofDOFs, int k_rrtc, double epsilon_rrtc, double* map, int x_size, int y_size)
+{
+	vector<Node_rrt_c*> tree_a;
+	vector<Node_rrt_c*> tree_b;
+	vector<double> armStart_angles_rrt_c;
+	vector<double> armGoal_angles_rrt_c;
+
+	//save startConfig angles and goalConfig angles in a vector depending on the number of DOFs
+	for (int i = 0; i < numofDOFs; i++)
+	{
+		armStart_angles_rrt_c.push_back(armstart_anglesV_rad[i]);
+		armGoal_angles_rrt_c.push_back(armgoal_anglesV_rad[i]);
+	}
+
+	Node_rrt_c* goalNode_rrt_c = new Node_rrt_c{armGoal_angles_rrt_c, nullptr};
+	Node_rrt_c* startNode_rrt_c = new Node_rrt_c{armStart_angles_rrt_c, nullptr};
+	tree_a.push_back(startNode_rrt_c);
+	tree_b.push_back(goalNode_rrt_c);
+
+	for (int i = 0; i < k_rrtc; ++i)
+	{
+		vector<double> q_rand = generatenodes_rrt_c(numofDOFs);
+
+		//if(extend_rrt_c(tree_a, q_rand_c, q_new_rrt_c, epsilon_rrtc, numofDOFs, map, x_size, y_size))
+		if (extend_rrt_c(tree_a, q_rand, epsilon_rrtc, numofDOFs, map, x_size, y_size) != Trapped)
+		{
+			if (connect(tree_b, tree_a.back()->angles_rrt_c, epsilon_rrtc, numofDOFs, map, x_size, y_size) == Reached)
+			{
+				vector<Node_rrt_c*> path_rrtc;
+
+                Node_rrt_c* currentNode_rrtc = tree_a.back();
+                while (currentNode_rrtc != nullptr) {
+                    path_rrtc.insert(path_rrtc.begin(), currentNode_rrtc);
+                    currentNode_rrtc = currentNode_rrtc->parent_rrt_c;
+                }
+				currentNode_rrtc = tree_b.back();
+				while (currentNode_rrtc != nullptr) {
+					path_rrtc.push_back(currentNode_rrtc);
+					currentNode_rrtc = currentNode_rrtc->parent_rrt_c;
+				}
+				cout << "Final path is: " << endl;
+				for (const Node_rrt_c* node : path_rrtc) {
+					std::cout << "Node Angles: ";
+					for (double angle : node->angles_rrt_c) {
+						std::cout << angle << " ";
+					}
+					std::cout << std::endl;
+				} 
+
+                return path_rrtc;
+			}	
+		}
+
+		swap(tree_a, tree_b);
+	}
+	return {};
+}
+
+static void plannerRRTConnect(
+    double *map,
+    int x_size,
+    int y_size,
+    double *armstart_anglesV_rad,
+    double *armgoal_anglesV_rad,
+    int numofDOFs,
+    double ***plan,
+    int *planlength)
+{
+    /* TODO: Replace with your implementation */
+	int k_rrtc = 100;
+	double epsilon_rrtc = 1;
+    vector<Node_rrt_c*> path = rrt_connect_planner(armstart_anglesV_rad, armgoal_anglesV_rad, numofDOFs, k_rrtc, epsilon_rrtc, map, x_size, y_size);
+
+	if (path.empty())
+	{
+		cout << "No path found" << endl;
+		return;
+	}
+
+	*planlength = (int)path.size();
+	*plan = (double**)malloc(path.size()*sizeof(double*));
+
+	for (int i = 0; i < path.size(); i++)
+	{
+		(*plan)[i] = (double*) malloc(numofDOFs*sizeof(double));
+		for (int j = 0; j < numofDOFs; j++)
+		{
+			(*plan)[i][j] = path[i]->angles_rrt_c[j];
+		}
+	}
+}
+
+There are two problems with the code - 
+1) This code is giving segmentation fault after it doesnt find a path
+2) the path_rrtc returned by the rrt_connect_planner returns a path from Goal configuration to the start configuration, which ideally should return a path from start configuration to goal configuration
